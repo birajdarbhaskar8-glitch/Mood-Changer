@@ -1,0 +1,51 @@
+MOOD CHANGER - YOUTUBE PLAYLIST SETUP
+======================================
+
+The project is already wired for YouTube playback.
+
+1. YouTube API key
+------------------
+Your existing YouTube Data API key is already kept in:
+    js/music-data.js
+
+It is used by the playlist loader. For a public deployment, restrict this
+Google API key in Google Cloud Console to:
+- YouTube Data API v3
+- your website's HTTP referrers/domains
+
+2. Add a playlist
+-----------------
+Open:
+    js/music-data.js
+
+Inside any category, paste the full YouTube playlist URL here:
+
+    youtubePlaylistUrl: "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID"
+
+Save the file.
+
+3. What happens automatically
+-----------------------------
+When the category is opened, Mood Changer:
+- reads the playlist through YouTube Data API v3
+- follows all playlist pages (not just the first 50)
+- gets title, channel name, thumbnail and duration
+- ignores deleted/private items
+- skips videos that YouTube marks as not embeddable
+- caches the loaded playlist in the browser
+- plays the video through the official YouTube embedded player
+- keeps your existing favorites, queue, shuffle, repeat and search features
+
+4. Important
+------------
+YouTube's embedded player must remain visible. Do not hide, cover, or
+make the YouTube player invisible. The project therefore shows the official
+player inside the bottom music player.
+
+For the most reliable local test, run the folder with VS Code Live Server
+instead of double-clicking index.html.
+
+5. Local MP3 fallback
+---------------------
+Your existing local/licensed MP3 support remains available. Only use audio
+files that you own, are public-domain, royalty-free, or properly licensed.
