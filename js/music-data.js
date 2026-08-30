@@ -1,4 +1,3 @@
-const YOUTUBE_API_KEY = "AIzaSyCy7SjEAnOvVet-urECRxIZsctEAb792u8";
 /* =====================================================================
    MOOD CHANGER — MUSIC & CATEGORY CONFIGURATION
    ---------------------------------------------------------------------

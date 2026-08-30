@@ -610,7 +610,9 @@
       });
       if (pageToken) params.set("pageToken", pageToken);
 
-      const res = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?${params.toString()}`);
+      const res = await fetch(
+  `https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist?playlistId=${encodeURIComponent(playlistId)}`
+);
       const data = await res.json();
 
       if (!res.ok || data.error) {
@@ -642,7 +644,9 @@
         key: YOUTUBE_API_KEY
       });
 
-      const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?${params.toString()}`);
+      const res = await fetch(
+  `https://moodchangerapi.birajdarbhaskar8.workers.dev/videos?id=${encodeURIComponent(ids)}`
+);
       const data = await res.json();
 
       if (!res.ok || data.error) {
