@@ -604,7 +604,6 @@
         part: "snippet",
         maxResults: "50",
         playlistId,
-        key: YOUTUBE_API_KEY
       });
       if (pageToken) params.set("pageToken", pageToken);
 
@@ -639,7 +638,6 @@
       const params = new URLSearchParams({
         part: "contentDetails,status",
         id: ids,
-        key: YOUTUBE_API_KEY
       });
 
       const res = await fetch(
