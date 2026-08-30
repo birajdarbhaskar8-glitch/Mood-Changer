@@ -592,9 +592,7 @@
   }
 
   async function fetchYouTubePlaylistSongs(playlistId, cat) {
-    if (!YOUTUBE_API_KEY || YOUTUBE_API_KEY === "PASTE_YOUR_YOUTUBE_API_KEY_HERE") {
-      throw new Error("YouTube API key is missing in js/music-data.js.");
-    }
+    
 
     const items = [];
     let pageToken = "";
