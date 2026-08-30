@@ -1,4 +1,4 @@
-const YOUTUBE_API_KEY = "AIzaSyDhZBEpFEdcKjPa7i0he0TG_suxeqUSStc";
+const YOUTUBE_API_KEY = "AIzaSyCy7SjEAnOvVet-urECRxIZsctEAb792u8";
 /* =====================================================================
    MOOD CHANGER — MUSIC & CATEGORY CONFIGURATION
    ---------------------------------------------------------------------
@@ -99,16 +99,8 @@ const categories = [
         image: "images/khandoba.png",
         gradient: ["#1b1035", "#3a2a6b"],
         // PASTE YOUTUBE PLAYLIST LINK HERE
-        youtubePlaylistUrl: "https://youtube.com/playlist?list=PLSyM_Dc4k8NE&si=9W7zCOyoPFSX4jMX",
-        songs: [
-    {
-        id: 1,
-        title: "jejuricha raja",
-        artist: "khandoba",
-        audio: "",
-        cover: "https://i.pinimg.com/originals/78/86/6f/78866f5ca776438fcf816848e8693f56.jpg?nii=t"
-    }
-]
+        youtubePlaylistUrl: "https://youtube.com/playlist?list=PLSyM_Dc4k8NE&si=PnUqHx8KiISLF-zd",
+        songs: []
     },
 
     {
