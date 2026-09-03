@@ -305,7 +305,18 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  /* BROWSER HISTORY — category navigation */
+  // Browser/Android Back support for category pages.
+  let handlingBrowserBack = false;
+
+  function pushCategoryHistory(categoryId) {
+    if (handlingBrowserBack) return;
+    history.pushState(
+      { view: "category", categoryId },
+      "",
+      "#category=" + encodeURIComponent(categoryId)
+    );
+  }
+
   function goHomeFromHistory() {
     showView("home");
     setBackground(SETTINGS.homeBackground, SETTINGS.homeBackgroundFallback);
@@ -515,7 +526,7 @@
     if (!cat) return;
 
     if (!fromHistory) {
-      history.pushState({ view: "category", categoryId }, "", window.location.href);
+      pushCategoryHistory(categoryId);
     }
 
     el.categoryHeroIcon.textContent = cat.icon;
@@ -617,9 +628,13 @@
       });
       if (pageToken) params.set("pageToken", pageToken);
 
-      const res = await fetch(
-  `https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist?playlistId=${encodeURIComponent(playlistId)}`
-);
+      const apiUrl = new URL(
+        "https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist"
+      );
+      apiUrl.searchParams.set("playlistId", playlistId);
+      if (pageToken) apiUrl.searchParams.set("pageToken", pageToken);
+
+      const res = await fetch(apiUrl.toString());
       const data = await res.json();
 
       if (!res.ok || data.error) {
@@ -700,13 +715,8 @@
   }
 
   el.categoryBackBtn.addEventListener("click", () => {
-    if (history.state?.view === "category") history.back();
-    else goHomeFromHistory();
-  });
-
-  window.addEventListener("popstate", (event) => {
-    if (event.state?.view === "category" && event.state.categoryId) {
-      openCategory(event.state.categoryId, true);
+    if (history.state?.view === "category") {
+      history.back();
     } else {
       goHomeFromHistory();
     }
@@ -837,14 +847,17 @@
   let ytApiReady = false;
   let ytPlayerReady = false;
   let ytPendingSong = null;
+  let ytPendingAutoplay = true;
   let ytTicker = null;
 
   window.onYouTubeIframeAPIReady = function () {
     ytApiReady = true;
-    if (ytPendingSong?.youtubeId) createYouTubePlayer(ytPendingSong);
+    if (ytPendingSong?.youtubeId) {
+      createYouTubePlayer(ytPendingSong, ytPendingAutoplay);
+    }
   };
 
-  function createYouTubePlayer(song) {
+  function createYouTubePlayer(song, shouldAutoplay = true) {
     const shell = document.getElementById("youtubePlayerShell");
     const host = document.getElementById("youtubePlayer");
     if (!shell || !host || !song?.youtubeId || !window.YT?.Player) return;
@@ -865,7 +878,7 @@
       height: "200",
       videoId: song.youtubeId,
       playerVars: {
-        autoplay: 1,
+        autoplay: shouldAutoplay ? 1 : 0,
         controls: 1,
         playsinline: 1,
         rel: 0,
@@ -876,8 +889,10 @@
           ytPlayerReady = true;
           const savedVolume = loadJSON(STORE_KEYS.volume, 80);
           event.target.setVolume(Number(savedVolume));
-          event.target.playVideo();
-          startYouTubeTicker();
+          if (shouldAutoplay) {
+            event.target.playVideo();
+            startYouTubeTicker();
+          }
         },
         onStateChange: (event) => {
           if (event.data === YT.PlayerState.PLAYING) {
@@ -914,6 +929,19 @@
     });
   }
 
+  // Recover an END event if the browser throttled background-tab callbacks.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (!currentSong?.youtubeId || !ytPlayerReady || !ytPlayer) return;
+
+    try {
+      if (ytPlayer.getPlayerState() === YT.PlayerState.ENDED) {
+        stopYouTubeTicker();
+        playNext(true);
+      }
+    } catch (_) {}
+  });
+
   function hideYouTubePlayer() {
     stopYouTubeTicker();
     ytPendingSong = null;
@@ -946,21 +974,6 @@
     if (ytTicker) clearInterval(ytTicker);
     ytTicker = null;
   }
-
-  // Background-tab recovery: resume a YouTube track if the browser
-  // paused/cued it while this page was hidden.
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden || !currentSong?.youtubeId || !ytPlayerReady || !ytPlayer) return;
-    try {
-      const state = ytPlayer.getPlayerState();
-      if (state === YT.PlayerState.PLAYING) {
-        startYouTubeTicker();
-      } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED) {
-        ytPlayer.playVideo();
-        startYouTubeTicker();
-      }
-    } catch (_) {}
-  });
 
   function getCurrentDuration() {
     if (currentSong?.youtubeId && ytPlayerReady && ytPlayer) {
@@ -1006,6 +1019,7 @@
       audio.pause();
       audio.removeAttribute("src");
       ytPendingSong = song;
+      ytPendingAutoplay = true;
 
       if (ytApiReady && window.YT?.Player) {
         createYouTubePlayer(song);
@@ -1283,8 +1297,27 @@
   /* 17. INIT                                                       */
   /* ------------------------------------------------------------ */
   if (!history.state || !history.state.view) {
-    history.replaceState({ view: "home" }, "", window.location.href);
+    history.replaceState(
+      { view: "home" },
+      "",
+      window.location.href.split("#")[0]
+    );
   }
+
+  window.addEventListener("popstate", (event) => {
+    handlingBrowserBack = true;
+
+    if (event.state?.view === "category" && event.state.categoryId) {
+      openCategory(event.state.categoryId, true);
+    } else {
+      goHomeFromHistory();
+    }
+
+    setTimeout(() => {
+      handlingBrowserBack = false;
+    }, 0);
+  });
+
   if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
 })();
 // Fix: Close Mobile Drawer
