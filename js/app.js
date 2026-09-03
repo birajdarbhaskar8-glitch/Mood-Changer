@@ -830,7 +830,7 @@
     if (ytPendingSong?.youtubeId) createYouTubePlayer(ytPendingSong);
   };
 
-  function createYouTubePlayer(song) {
+  function createYouTubePlayer(song, shouldAutoplay = true) {
     const shell = document.getElementById("youtubePlayerShell");
     const host = document.getElementById("youtubePlayer");
     if (!shell || !host || !song?.youtubeId || !window.YT?.Player) return;
@@ -851,7 +851,7 @@
       height: "200",
       videoId: song.youtubeId,
       playerVars: {
-        autoplay: 1,
+        autoplay: shouldAutoplay ? 1 : 0,
         controls: 1,
         playsinline: 1,
         rel: 0,
@@ -862,9 +862,11 @@
           ytPlayerReady = true;
           const savedVolume = loadJSON(STORE_KEYS.volume, 80);
           event.target.setVolume(Number(savedVolume));
-          event.target.playVideo();
-          startYouTubeTicker();
-        },
+
+if (shouldAutoplay) {
+  event.target.playVideo();
+  startYouTubeTicker();
+},
         onStateChange: (event) => {
           if (event.data === YT.PlayerState.PLAYING) {
             el.playPauseBtn.textContent = "⏸";
@@ -1251,9 +1253,31 @@
   }
 
   /* ------------------------------------------------------------ */
-  /* 17. INIT                                                       */
-  /* ------------------------------------------------------------ */
-  if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
+/* 17. INIT                                                       */
+/* ------------------------------------------------------------ */
+
+if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
+
+// Show the first available song in the player when the website opens.
+// The song is selected and displayed, but it does NOT autoplay.
+const firstAvailableSong = ALL_SONGS.find((song) => song);
+
+if (firstAvailableSong) {
+  queue = ALL_SONGS.slice();
+  queueIndex = ALL_SONGS.indexOf(firstAvailableSong);
+  currentSong = firstAvailableSong;
+
+  updatePlayerUI();
+  highlightPlayingRow();
+
+  if (firstAvailableSong.youtubeId) {
+    ytPendingSong = firstAvailableSong;
+
+    if (ytApiReady && window.YT?.Player) {
+      createYouTubePlayer(firstAvailableSong, false);
+    }
+  }
+}
 })();
 // Fix: Close Mobile Drawer
 const closeDrawer = () => {
