@@ -305,13 +305,16 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // Browser/Android Back support for category pages.
+  /* ------------------------------------------------------------ */
+  /* BROWSER HISTORY — category/playlist navigation               */
+  /* ------------------------------------------------------------ */
   let handlingBrowserBack = false;
 
   function pushCategoryHistory(categoryId) {
     if (handlingBrowserBack) return;
+
     history.pushState(
-      { view: "category", categoryId },
+      { view: "category", categoryId: categoryId },
       "",
       "#category=" + encodeURIComponent(categoryId)
     );
@@ -628,13 +631,9 @@
       });
       if (pageToken) params.set("pageToken", pageToken);
 
-      const apiUrl = new URL(
-        "https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist"
-      );
-      apiUrl.searchParams.set("playlistId", playlistId);
-      if (pageToken) apiUrl.searchParams.set("pageToken", pageToken);
-
-      const res = await fetch(apiUrl.toString());
+      const res = await fetch(
+  `https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist?playlistId=${encodeURIComponent(playlistId)}`
+);
       const data = await res.json();
 
       if (!res.ok || data.error) {
@@ -720,6 +719,20 @@
     } else {
       goHomeFromHistory();
     }
+  });
+
+  window.addEventListener("popstate", (event) => {
+    handlingBrowserBack = true;
+
+    if (event.state?.view === "category" && event.state.categoryId) {
+      openCategory(event.state.categoryId, true);
+    } else {
+      goHomeFromHistory();
+    }
+
+    setTimeout(() => {
+      handlingBrowserBack = false;
+    }, 0);
   });
 
   /* ------------------------------------------------------------ */
@@ -847,17 +860,14 @@
   let ytApiReady = false;
   let ytPlayerReady = false;
   let ytPendingSong = null;
-  let ytPendingAutoplay = true;
   let ytTicker = null;
 
   window.onYouTubeIframeAPIReady = function () {
     ytApiReady = true;
-    if (ytPendingSong?.youtubeId) {
-      createYouTubePlayer(ytPendingSong, ytPendingAutoplay);
-    }
+    if (ytPendingSong?.youtubeId) createYouTubePlayer(ytPendingSong);
   };
 
-  function createYouTubePlayer(song, shouldAutoplay = true) {
+  function createYouTubePlayer(song) {
     const shell = document.getElementById("youtubePlayerShell");
     const host = document.getElementById("youtubePlayer");
     if (!shell || !host || !song?.youtubeId || !window.YT?.Player) return;
@@ -878,7 +888,7 @@
       height: "200",
       videoId: song.youtubeId,
       playerVars: {
-        autoplay: shouldAutoplay ? 1 : 0,
+        autoplay: 1,
         controls: 1,
         playsinline: 1,
         rel: 0,
@@ -889,10 +899,8 @@
           ytPlayerReady = true;
           const savedVolume = loadJSON(STORE_KEYS.volume, 80);
           event.target.setVolume(Number(savedVolume));
-          if (shouldAutoplay) {
-            event.target.playVideo();
-            startYouTubeTicker();
-          }
+          event.target.playVideo();
+          startYouTubeTicker();
         },
         onStateChange: (event) => {
           if (event.data === YT.PlayerState.PLAYING) {
@@ -928,19 +936,6 @@
       }
     });
   }
-
-  // Recover an END event if the browser throttled background-tab callbacks.
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible") return;
-    if (!currentSong?.youtubeId || !ytPlayerReady || !ytPlayer) return;
-
-    try {
-      if (ytPlayer.getPlayerState() === YT.PlayerState.ENDED) {
-        stopYouTubeTicker();
-        playNext(true);
-      }
-    } catch (_) {}
-  });
 
   function hideYouTubePlayer() {
     stopYouTubeTicker();
@@ -1019,7 +1014,6 @@
       audio.pause();
       audio.removeAttribute("src");
       ytPendingSong = song;
-      ytPendingAutoplay = true;
 
       if (ytApiReady && window.YT?.Player) {
         createYouTubePlayer(song);
@@ -1296,6 +1290,8 @@
   /* ------------------------------------------------------------ */
   /* 17. INIT                                                       */
   /* ------------------------------------------------------------ */
+
+  // Keep Home as the starting browser-history state.
   if (!history.state || !history.state.view) {
     history.replaceState(
       { view: "home" },
@@ -1303,20 +1299,6 @@
       window.location.href.split("#")[0]
     );
   }
-
-  window.addEventListener("popstate", (event) => {
-    handlingBrowserBack = true;
-
-    if (event.state?.view === "category" && event.state.categoryId) {
-      openCategory(event.state.categoryId, true);
-    } else {
-      goHomeFromHistory();
-    }
-
-    setTimeout(() => {
-      handlingBrowserBack = false;
-    }, 0);
-  });
 
   if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
 })();
