@@ -120,7 +120,7 @@ const categories = [
         description: "Timeless classics that never get old.",
         image: "images/old-songs.png",
         gradient: ["#2a1a12", "#6b3a2a"],
-        youtubePlaylistUrl: "https://music.youtube.com/playlist?list=PLTJ1PnzCWyFw",
+        youtubePlaylistUrl: "https://youtube.com/playlist?list=PLFXyw8ngksN8&si=Ka1IX-NafWC-ccj_",
         songs: []
     },
 
