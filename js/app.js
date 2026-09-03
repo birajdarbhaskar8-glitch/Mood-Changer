@@ -306,6 +306,26 @@
   }
 
   /* ------------------------------------------------------------ */
+  /* BROWSER HISTORY — category/playlist navigation               */
+  /* ------------------------------------------------------------ */
+  let handlingBrowserBack = false;
+
+  function pushCategoryHistory(categoryId) {
+    if (handlingBrowserBack) return;
+
+    history.pushState(
+      { view: "category", categoryId: categoryId },
+      "",
+      "#category=" + encodeURIComponent(categoryId)
+    );
+  }
+
+  function goHomeFromHistory() {
+    showView("home");
+    setBackground(SETTINGS.homeBackground, SETTINGS.homeBackgroundFallback);
+  }
+
+  /* ------------------------------------------------------------ */
   /* 8. MOOD DIAL (signature element)                               */
   /* ------------------------------------------------------------ */
   function buildMoodDial() {
@@ -504,9 +524,13 @@
   /* ------------------------------------------------------------ */
   /* 11. CATEGORY DETAIL VIEW                                       */
   /* ------------------------------------------------------------ */
-  async function openCategory(categoryId) {
+  async function openCategory(categoryId, fromHistory = false) {
     const cat = findCategory(categoryId);
     if (!cat) return;
+
+    if (!fromHistory) {
+      pushCategoryHistory(categoryId);
+    }
 
     el.categoryHeroIcon.textContent = cat.icon;
     el.categoryHeroName.textContent = cat.name;
@@ -592,38 +616,34 @@
   }
 
   async function fetchYouTubePlaylistSongs(playlistId, cat) {
-  
-  const items = [];
-  let pageToken = "";
+    
 
-  // playlistItems.list returns a maximum of 50 items per page.
-  // Keep following nextPageToken so the full playlist is imported.
-  do {
-    const apiUrl = new URL(
-      "https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist"
-    );
+    const items = [];
+    let pageToken = "";
 
-    apiUrl.searchParams.set("playlistId", playlistId);
+    // playlistItems.list returns a maximum of 50 items per page.
+    // Keep following nextPageToken so the full playlist is imported.
+    do {
+      const params = new URLSearchParams({
+        part: "snippet",
+        maxResults: "50",
+        playlistId,
+      });
+      if (pageToken) params.set("pageToken", pageToken);
 
-    if (pageToken) {
-      apiUrl.searchParams.set("pageToken", pageToken);
-    }
+      const res = await fetch(
+  `https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist?playlistId=${encodeURIComponent(playlistId)}`
+);
+      const data = await res.json();
 
-    const res = await fetch(apiUrl.toString());
-    const data = await res.json();
+      if (!res.ok || data.error) {
+        const reason = data?.error?.errors?.[0]?.reason || data?.error?.message;
+        throw new Error(reason ? `YouTube API: ${reason}` : "YouTube API request failed.");
+      }
 
-    if (!res.ok || data.error) {
-      const reason = data?.error?.errors?.[0]?.reason || data?.error?.message;
-      throw new Error(
-        reason
-          ? `YouTube API: ${reason}`
-          : "YouTube API request failed."
-      );
-    }
-
-    items.push(...(data.items || []));
-    pageToken = data.nextPageToken || "";
-  } while (pageToken);
+      items.push(...(data.items || []));
+      pageToken = data.nextPageToken || "";
+    } while (pageToken);
 
     const validItems = items.filter((item) => {
       const title = item?.snippet?.title || "";
@@ -694,8 +714,25 @@
   }
 
   el.categoryBackBtn.addEventListener("click", () => {
-    showView("home");
-    setBackground(SETTINGS.homeBackground, SETTINGS.homeBackgroundFallback);
+    if (history.state?.view === "category") {
+      history.back();
+    } else {
+      goHomeFromHistory();
+    }
+  });
+
+  window.addEventListener("popstate", (event) => {
+    handlingBrowserBack = true;
+
+    if (event.state?.view === "category" && event.state.categoryId) {
+      openCategory(event.state.categoryId, true);
+    } else {
+      goHomeFromHistory();
+    }
+
+    setTimeout(() => {
+      handlingBrowserBack = false;
+    }, 0);
   });
 
   /* ------------------------------------------------------------ */
@@ -824,13 +861,14 @@
   let ytPlayerReady = false;
   let ytPendingSong = null;
   let ytTicker = null;
+  let ytTrackEnding = false;
 
   window.onYouTubeIframeAPIReady = function () {
     ytApiReady = true;
     if (ytPendingSong?.youtubeId) createYouTubePlayer(ytPendingSong);
   };
 
-  function createYouTubePlayer(song, shouldAutoplay = true) {
+  function createYouTubePlayer(song) {
     const shell = document.getElementById("youtubePlayerShell");
     const host = document.getElementById("youtubePlayer");
     if (!shell || !host || !song?.youtubeId || !window.YT?.Player) return;
@@ -846,12 +884,13 @@
     }
 
     ytPlayerReady = false;
+    ytTrackEnding = false;
     ytPlayer = new YT.Player("youtubePlayer", {
       width: "320",
       height: "200",
       videoId: song.youtubeId,
       playerVars: {
-        autoplay: shouldAutoplay ? 1 : 0,
+        autoplay: 1,
         controls: 1,
         playsinline: 1,
         rel: 0,
@@ -862,11 +901,9 @@
           ytPlayerReady = true;
           const savedVolume = loadJSON(STORE_KEYS.volume, 80);
           event.target.setVolume(Number(savedVolume));
-
-if (shouldAutoplay) {
-  event.target.playVideo();
-  startYouTubeTicker();
-},
+          event.target.playVideo();
+          startYouTubeTicker();
+        },
         onStateChange: (event) => {
           if (event.data === YT.PlayerState.PLAYING) {
             el.playPauseBtn.textContent = "⏸";
@@ -878,8 +915,7 @@ if (shouldAutoplay) {
             el.playPauseBtn.setAttribute("aria-label", "Play");
             el.visualizer.classList.remove("is-playing");
           } else if (event.data === YT.PlayerState.ENDED) {
-            stopYouTubeTicker();
-            playNext(true);
+            advanceFromYouTubeEnd();
           } else if (event.data === YT.PlayerState.BUFFERING) {
             el.playPauseBtn.textContent = "⏳";
           }
@@ -916,10 +952,35 @@ if (shouldAutoplay) {
     }
   }
 
+  function advanceFromYouTubeEnd() {
+    if (ytTrackEnding) return;
+    ytTrackEnding = true;
+    stopYouTubeTicker();
+    playNext(true);
+  }
+
+  function checkYouTubeEnded() {
+    if (!ytPlayer || !ytPlayerReady || !currentSong?.youtubeId || ytTrackEnding) return;
+    try {
+      const state = ytPlayer.getPlayerState();
+      if (state === YT.PlayerState.ENDED) {
+        advanceFromYouTubeEnd();
+        return;
+      }
+      const duration = Number(ytPlayer.getDuration() || 0);
+      const current = Number(ytPlayer.getCurrentTime() || 0);
+      if (duration > 0 && current >= Math.max(0, duration - 0.75)) {
+        advanceFromYouTubeEnd();
+      }
+    } catch (_) {}
+  }
+
   function startYouTubeTicker() {
     stopYouTubeTicker();
     ytTicker = setInterval(() => {
       if (!ytPlayer || !ytPlayerReady || !currentSong) return;
+      checkYouTubeEnded();
+      if (ytTrackEnding) return;
       const duration = Number(ytPlayer.getDuration() || 0);
       const current = Number(ytPlayer.getCurrentTime() || 0);
       if (duration > 0) {
@@ -934,6 +995,18 @@ if (shouldAutoplay) {
     if (ytTicker) clearInterval(ytTicker);
     ytTicker = null;
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) checkYouTubeEnded();
+  });
+
+  window.addEventListener("focus", () => {
+    checkYouTubeEnded();
+  });
+
+  window.addEventListener("pageshow", () => {
+    checkYouTubeEnded();
+  });
 
   function getCurrentDuration() {
     if (currentSong?.youtubeId && ytPlayerReady && ytPlayer) {
@@ -1253,31 +1326,19 @@ if (shouldAutoplay) {
   }
 
   /* ------------------------------------------------------------ */
-/* 17. INIT                                                       */
-/* ------------------------------------------------------------ */
+  /* 17. INIT                                                       */
+  /* ------------------------------------------------------------ */
 
-if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
-
-// Show the first available song in the player when the website opens.
-// The song is selected and displayed, but it does NOT autoplay.
-const firstAvailableSong = ALL_SONGS.find((song) => song);
-
-if (firstAvailableSong) {
-  queue = ALL_SONGS.slice();
-  queueIndex = ALL_SONGS.indexOf(firstAvailableSong);
-  currentSong = firstAvailableSong;
-
-  updatePlayerUI();
-  highlightPlayingRow();
-
-  if (firstAvailableSong.youtubeId) {
-    ytPendingSong = firstAvailableSong;
-
-    if (ytApiReady && window.YT?.Player) {
-      createYouTubePlayer(firstAvailableSong, false);
-    }
+  // Keep Home as the starting browser-history state.
+  if (!history.state || !history.state.view) {
+    history.replaceState(
+      { view: "home" },
+      "",
+      window.location.href.split("#")[0]
+    );
   }
-}
+
+  if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
 })();
 // Fix: Close Mobile Drawer
 const closeDrawer = () => {
