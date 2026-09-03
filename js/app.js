@@ -592,34 +592,38 @@
   }
 
   async function fetchYouTubePlaylistSongs(playlistId, cat) {
-    
+  
+  const items = [];
+  let pageToken = "";
 
-    const items = [];
-    let pageToken = "";
+  // playlistItems.list returns a maximum of 50 items per page.
+  // Keep following nextPageToken so the full playlist is imported.
+  do {
+    const apiUrl = new URL(
+      "https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist"
+    );
 
-    // playlistItems.list returns a maximum of 50 items per page.
-    // Keep following nextPageToken so the full playlist is imported.
-    do {
-      const params = new URLSearchParams({
-        part: "snippet",
-        maxResults: "50",
-        playlistId,
-      });
-      if (pageToken) params.set("pageToken", pageToken);
+    apiUrl.searchParams.set("playlistId", playlistId);
 
-      const res = await fetch(
-  `https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist?playlistId=${encodeURIComponent(playlistId)}`
-);
-      const data = await res.json();
+    if (pageToken) {
+      apiUrl.searchParams.set("pageToken", pageToken);
+    }
 
-      if (!res.ok || data.error) {
-        const reason = data?.error?.errors?.[0]?.reason || data?.error?.message;
-        throw new Error(reason ? `YouTube API: ${reason}` : "YouTube API request failed.");
-      }
+    const res = await fetch(apiUrl.toString());
+    const data = await res.json();
 
-      items.push(...(data.items || []));
-      pageToken = data.nextPageToken || "";
-    } while (pageToken);
+    if (!res.ok || data.error) {
+      const reason = data?.error?.errors?.[0]?.reason || data?.error?.message;
+      throw new Error(
+        reason
+          ? `YouTube API: ${reason}`
+          : "YouTube API request failed."
+      );
+    }
+
+    items.push(...(data.items || []));
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
 
     const validItems = items.filter((item) => {
       const title = item?.snippet?.title || "";
