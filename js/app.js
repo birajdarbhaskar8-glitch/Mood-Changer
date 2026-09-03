@@ -305,21 +305,7 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  /* ------------------------------------------------------------ */
-  /* BROWSER HISTORY — category/playlist navigation               */
-  /* ------------------------------------------------------------ */
-  let handlingBrowserBack = false;
-
-  function pushCategoryHistory(categoryId) {
-    if (handlingBrowserBack) return;
-
-    history.pushState(
-      { view: "category", categoryId: categoryId },
-      "",
-      "#category=" + encodeURIComponent(categoryId)
-    );
-  }
-
+  /* BROWSER HISTORY — category navigation */
   function goHomeFromHistory() {
     showView("home");
     setBackground(SETTINGS.homeBackground, SETTINGS.homeBackgroundFallback);
@@ -529,7 +515,7 @@
     if (!cat) return;
 
     if (!fromHistory) {
-      pushCategoryHistory(categoryId);
+      history.pushState({ view: "category", categoryId }, "", window.location.href);
     }
 
     el.categoryHeroIcon.textContent = cat.icon;
@@ -714,25 +700,16 @@
   }
 
   el.categoryBackBtn.addEventListener("click", () => {
-    if (history.state?.view === "category") {
-      history.back();
-    } else {
-      goHomeFromHistory();
-    }
+    if (history.state?.view === "category") history.back();
+    else goHomeFromHistory();
   });
 
   window.addEventListener("popstate", (event) => {
-    handlingBrowserBack = true;
-
     if (event.state?.view === "category" && event.state.categoryId) {
       openCategory(event.state.categoryId, true);
     } else {
       goHomeFromHistory();
     }
-
-    setTimeout(() => {
-      handlingBrowserBack = false;
-    }, 0);
   });
 
   /* ------------------------------------------------------------ */
@@ -861,7 +838,6 @@
   let ytPlayerReady = false;
   let ytPendingSong = null;
   let ytTicker = null;
-  let ytTrackEnding = false;
 
   window.onYouTubeIframeAPIReady = function () {
     ytApiReady = true;
@@ -884,7 +860,6 @@
     }
 
     ytPlayerReady = false;
-    ytTrackEnding = false;
     ytPlayer = new YT.Player("youtubePlayer", {
       width: "320",
       height: "200",
@@ -915,7 +890,8 @@
             el.playPauseBtn.setAttribute("aria-label", "Play");
             el.visualizer.classList.remove("is-playing");
           } else if (event.data === YT.PlayerState.ENDED) {
-            advanceFromYouTubeEnd();
+            stopYouTubeTicker();
+            playNext(true);
           } else if (event.data === YT.PlayerState.BUFFERING) {
             el.playPauseBtn.textContent = "⏳";
           }
@@ -952,35 +928,10 @@
     }
   }
 
-  function advanceFromYouTubeEnd() {
-    if (ytTrackEnding) return;
-    ytTrackEnding = true;
-    stopYouTubeTicker();
-    playNext(true);
-  }
-
-  function checkYouTubeEnded() {
-    if (!ytPlayer || !ytPlayerReady || !currentSong?.youtubeId || ytTrackEnding) return;
-    try {
-      const state = ytPlayer.getPlayerState();
-      if (state === YT.PlayerState.ENDED) {
-        advanceFromYouTubeEnd();
-        return;
-      }
-      const duration = Number(ytPlayer.getDuration() || 0);
-      const current = Number(ytPlayer.getCurrentTime() || 0);
-      if (duration > 0 && current >= Math.max(0, duration - 0.75)) {
-        advanceFromYouTubeEnd();
-      }
-    } catch (_) {}
-  }
-
   function startYouTubeTicker() {
     stopYouTubeTicker();
     ytTicker = setInterval(() => {
       if (!ytPlayer || !ytPlayerReady || !currentSong) return;
-      checkYouTubeEnded();
-      if (ytTrackEnding) return;
       const duration = Number(ytPlayer.getDuration() || 0);
       const current = Number(ytPlayer.getCurrentTime() || 0);
       if (duration > 0) {
@@ -996,16 +947,19 @@
     ytTicker = null;
   }
 
+  // Background-tab recovery: resume a YouTube track if the browser
+  // paused/cued it while this page was hidden.
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) checkYouTubeEnded();
-  });
-
-  window.addEventListener("focus", () => {
-    checkYouTubeEnded();
-  });
-
-  window.addEventListener("pageshow", () => {
-    checkYouTubeEnded();
+    if (document.hidden || !currentSong?.youtubeId || !ytPlayerReady || !ytPlayer) return;
+    try {
+      const state = ytPlayer.getPlayerState();
+      if (state === YT.PlayerState.PLAYING) {
+        startYouTubeTicker();
+      } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED) {
+        ytPlayer.playVideo();
+        startYouTubeTicker();
+      }
+    } catch (_) {}
   });
 
   function getCurrentDuration() {
@@ -1328,16 +1282,9 @@
   /* ------------------------------------------------------------ */
   /* 17. INIT                                                       */
   /* ------------------------------------------------------------ */
-
-  // Keep Home as the starting browser-history state.
   if (!history.state || !history.state.view) {
-    history.replaceState(
-      { view: "home" },
-      "",
-      window.location.href.split("#")[0]
-    );
+    history.replaceState({ view: "home" }, "", window.location.href);
   }
-
   if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
 })();
 // Fix: Close Mobile Drawer
