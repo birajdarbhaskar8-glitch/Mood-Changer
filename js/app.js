@@ -306,6 +306,44 @@
   }
 
   /* ------------------------------------------------------------ */
+  /* 7b. IN-APP BACK NAVIGATION (browser/back-gesture support)      */
+  /* ------------------------------------------------------------ */
+  let inAppHistoryPushed = false;
+
+  function goHome() {
+    showView("home");
+    setBackground(SETTINGS.homeBackground, SETTINGS.homeBackgroundFallback);
+  }
+
+  // Any time we navigate into a non-home view, make sure there is exactly
+  // one history entry marking "we are inside the app". Pressing the
+  // browser/gesture back button then pops that entry (handled below)
+  // and returns to Home instead of leaving the website entirely.
+  function pushAppViewState(viewName) {
+    if (!inAppHistoryPushed) {
+      history.pushState({ mcView: viewName }, "", "#" + viewName);
+      inAppHistoryPushed = true;
+    } else {
+      history.replaceState({ mcView: viewName }, "", "#" + viewName);
+    }
+  }
+
+  window.addEventListener("popstate", () => {
+    inAppHistoryPushed = false;
+    goHome();
+  });
+
+  // Used by the on-screen "back" buttons so they stay in sync with the
+  // history entry pushed above (instead of leaving a stray entry behind).
+  function goBackToHome() {
+    if (inAppHistoryPushed) {
+      history.back();
+    } else {
+      goHome();
+    }
+  }
+
+  /* ------------------------------------------------------------ */
   /* 8. MOOD DIAL (signature element)                               */
   /* ------------------------------------------------------------ */
   function buildMoodDial() {
@@ -508,6 +546,8 @@
     const cat = findCategory(categoryId);
     if (!cat) return;
 
+    pushAppViewState("category:" + cat.id);
+
     el.categoryHeroIcon.textContent = cat.icon;
     el.categoryHeroName.textContent = cat.name;
     el.categoryHeroDesc.textContent = cat.description || "";
@@ -694,30 +734,34 @@
   }
 
   el.categoryBackBtn.addEventListener("click", () => {
-    showView("home");
-    setBackground(SETTINGS.homeBackground, SETTINGS.homeBackgroundFallback);
+    goBackToHome();
   });
 
   /* ------------------------------------------------------------ */
   /* 12. SONGS / FAVORITES / PLAYLISTS NAV                          */
   /* ------------------------------------------------------------ */
   function openSongsView() {
+    pushAppViewState("songs");
     renderSongList(el.allSongsList, ALL_SONGS);
     showView("songs");
   }
   function openFavoritesView() {
+    pushAppViewState("favorites");
     const songs = favorites.map(findSongById).filter(Boolean);
     renderSongList(el.favoritesList, songs, el.favoritesEmpty);
     showView("favorites");
   }
-  function openPlaylistsView() { showView("playlists"); }
+  function openPlaylistsView() {
+    pushAppViewState("playlists");
+    showView("playlists");
+  }
 
   el.navSongs.addEventListener("click", openSongsView);
   el.navFavorites.addEventListener("click", openFavoritesView);
   el.navPlaylists.addEventListener("click", openPlaylistsView);
-  el.songsBackBtn.addEventListener("click", () => showView("home"));
-  el.favoritesBackBtn.addEventListener("click", () => showView("home"));
-  el.playlistsBackBtn.addEventListener("click", () => showView("home"));
+  el.songsBackBtn.addEventListener("click", () => goBackToHome());
+  el.favoritesBackBtn.addEventListener("click", () => goBackToHome());
+  el.playlistsBackBtn.addEventListener("click", () => goBackToHome());
 
   /* ------------------------------------------------------------ */
   /* 13. DRAWERS (categories / mobile / queue) + SCRIM              */
@@ -863,10 +907,11 @@
           const savedVolume = loadJSON(STORE_KEYS.volume, 80);
           event.target.setVolume(Number(savedVolume));
 
-if (shouldAutoplay) {
-  event.target.playVideo();
-  startYouTubeTicker();
-},
+          if (shouldAutoplay) {
+            event.target.playVideo();
+            startYouTubeTicker();
+          }
+        },
         onStateChange: (event) => {
           if (event.data === YT.PlayerState.PLAYING) {
             el.playPauseBtn.textContent = "⏸";
