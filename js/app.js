@@ -527,7 +527,7 @@
       el.categoryPlayAll.hidden = true;
       showView("category");
 
-      const cacheKey = `yt_cache_v3_${pId}`;
+      const cacheKey = `yt_cache_v2_${pId}`;
       try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -592,38 +592,38 @@
   }
 
   async function fetchYouTubePlaylistSongs(playlistId, cat) {
-    
+  
+  const items = [];
+  let pageToken = "";
 
-    const items = [];
-    let pageToken = "";
+  // playlistItems.list returns a maximum of 50 items per page.
+  // Keep following nextPageToken so the full playlist is imported.
+  do {
+    const apiUrl = new URL(
+      "https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist"
+    );
 
-    // playlistItems.list returns a maximum of 50 items per page.
-    // Keep following nextPageToken so the full playlist is imported.
-    do {
-      const params = new URLSearchParams({
-        part: "snippet",
-        maxResults: "50",
-        playlistId,
-      });
-      if (pageToken) params.set("pageToken", pageToken);
+    apiUrl.searchParams.set("playlistId", playlistId);
 
-      const apiUrl = new URL(
-  "https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist"
-);
-apiUrl.searchParams.set("playlistId", playlistId);
-if (pageToken) apiUrl.searchParams.set("pageToken", pageToken);
+    if (pageToken) {
+      apiUrl.searchParams.set("pageToken", pageToken);
+    }
 
-const res = await fetch(apiUrl.toString());
-      const data = await res.json();
+    const res = await fetch(apiUrl.toString());
+    const data = await res.json();
 
-      if (!res.ok || data.error) {
-        const reason = data?.error?.errors?.[0]?.reason || data?.error?.message;
-        throw new Error(reason ? `YouTube API: ${reason}` : "YouTube API request failed.");
-      }
+    if (!res.ok || data.error) {
+      const reason = data?.error?.errors?.[0]?.reason || data?.error?.message;
+      throw new Error(
+        reason
+          ? `YouTube API: ${reason}`
+          : "YouTube API request failed."
+      );
+    }
 
-      items.push(...(data.items || []));
-      pageToken = data.nextPageToken || "";
-    } while (pageToken);
+    items.push(...(data.items || []));
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
 
     const validItems = items.filter((item) => {
       const title = item?.snippet?.title || "";
@@ -830,7 +830,7 @@ const res = await fetch(apiUrl.toString());
     if (ytPendingSong?.youtubeId) createYouTubePlayer(ytPendingSong);
   };
 
-  function createYouTubePlayer(song) {
+  function createYouTubePlayer(song, shouldAutoplay = true) {
     const shell = document.getElementById("youtubePlayerShell");
     const host = document.getElementById("youtubePlayer");
     if (!shell || !host || !song?.youtubeId || !window.YT?.Player) return;
@@ -851,7 +851,7 @@ const res = await fetch(apiUrl.toString());
       height: "200",
       videoId: song.youtubeId,
       playerVars: {
-        autoplay: 1,
+        autoplay: shouldAutoplay ? 1 : 0,
         controls: 1,
         playsinline: 1,
         rel: 0,
@@ -862,9 +862,11 @@ const res = await fetch(apiUrl.toString());
           ytPlayerReady = true;
           const savedVolume = loadJSON(STORE_KEYS.volume, 80);
           event.target.setVolume(Number(savedVolume));
-          event.target.playVideo();
-          startYouTubeTicker();
-        },
+
+if (shouldAutoplay) {
+  event.target.playVideo();
+  startYouTubeTicker();
+},
         onStateChange: (event) => {
           if (event.data === YT.PlayerState.PLAYING) {
             el.playPauseBtn.textContent = "⏸";
@@ -1251,9 +1253,31 @@ const res = await fetch(apiUrl.toString());
   }
 
   /* ------------------------------------------------------------ */
-  /* 17. INIT                                                       */
-  /* ------------------------------------------------------------ */
-  if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
+/* 17. INIT                                                       */
+/* ------------------------------------------------------------ */
+
+if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
+
+// Show the first available song in the player when the website opens.
+// The song is selected and displayed, but it does NOT autoplay.
+const firstAvailableSong = ALL_SONGS.find((song) => song);
+
+if (firstAvailableSong) {
+  queue = ALL_SONGS.slice();
+  queueIndex = ALL_SONGS.indexOf(firstAvailableSong);
+  currentSong = firstAvailableSong;
+
+  updatePlayerUI();
+  highlightPlayingRow();
+
+  if (firstAvailableSong.youtubeId) {
+    ytPendingSong = firstAvailableSong;
+
+    if (ytApiReady && window.YT?.Player) {
+      createYouTubePlayer(firstAvailableSong, false);
+    }
+  }
+}
 })();
 // Fix: Close Mobile Drawer
 const closeDrawer = () => {
