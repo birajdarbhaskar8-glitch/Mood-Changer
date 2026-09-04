@@ -866,6 +866,7 @@
   let ytPlayer = null;
   let ytApiReady = false;
   let ytPlayerReady = false;
+  let ytPlayerInitialized = false; // true once a real YT.Player has been built at least once
   let ytPendingSong = null;
   let ytTicker = null;
 
@@ -883,6 +884,24 @@
     document.querySelector(".player-cover-wrap")?.classList.add("is-youtube");
     // Video songs only — mp3/local songs never show this button.
     if (el.fullscreenBtn) el.fullscreenBtn.hidden = false;
+
+    // Reuse the existing iframe/player instead of destroying and rebuilding
+    // it for every track. A brand-new cross-origin iframe asking to
+    // autoplay can get silently blocked by the browser while the tab is in
+    // the background (this is what caused "auto-next" to not audibly play
+    // until you switched back to the tab). Loading a new video into the
+    // SAME already-permitted player avoids that block entirely.
+    if (ytPlayer && ytPlayerInitialized) {
+      if (shouldAutoplay) {
+        ytPlayer.loadVideoById(song.youtubeId);
+        startYouTubeTicker();
+      } else {
+        ytPlayer.cueVideoById(song.youtubeId);
+      }
+      ytPlayerReady = true;
+      armAutoplayRetry(song, shouldAutoplay);
+      return;
+    }
 
     if (ytPlayer) {
       try { ytPlayer.destroy(); } catch (_) {}
@@ -904,12 +923,14 @@
       events: {
         onReady: (event) => {
           ytPlayerReady = true;
+          ytPlayerInitialized = true;
           const savedVolume = loadJSON(STORE_KEYS.volume, 80);
           event.target.setVolume(Number(savedVolume));
 
           if (shouldAutoplay) {
             event.target.playVideo();
             startYouTubeTicker();
+            armAutoplayRetry(song, true);
           }
         },
         onStateChange: (event) => {
@@ -934,6 +955,7 @@
 
           // Destroy the failed instance so the next track gets a clean player.
           ytPlayerReady = false;
+          ytPlayerInitialized = false;
           stopYouTubeTicker();
           try { ytPlayer?.destroy(); } catch (_) {}
           ytPlayer = null;
@@ -978,6 +1000,27 @@
   function stopYouTubeTicker() {
     if (ytTicker) clearInterval(ytTicker);
     ytTicker = null;
+  }
+
+  // Safety net for autoplay that browsers silently blocked while the tab
+  // was in the background (e.g. mid-song auto-advance to the next track).
+  // As soon as the tab becomes visible again — which itself acts like a
+  // user gesture — retry playing that same song if it's still the current
+  // one and it isn't already playing.
+  function armAutoplayRetry(song, shouldAutoplay) {
+    if (!shouldAutoplay) return;
+    const retry = () => {
+      document.removeEventListener("visibilitychange", retry);
+      if (document.hidden || currentSong !== song) return;
+      if (song.youtubeId) {
+        if (ytPlayer && ytPlayerReady && ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
+          ytPlayer.playVideo();
+        }
+      } else if (audio.paused) {
+        audio.play().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", retry, { once: true });
   }
 
   function getCurrentDuration() {
@@ -1045,7 +1088,14 @@
     audio.load();
     audio.play().catch(err => {
       console.error("Playback failed:", err);
-      showToast("Unable to play this audio file.");
+      if (err && err.name === "NotAllowedError") {
+        // Autoplay got silently blocked (commonly while the tab is in the
+        // background). Retry as soon as the tab is visible again instead
+        // of showing an error toast.
+        armAutoplayRetry(song, true);
+      } else {
+        showToast("Unable to play this audio file.");
+      }
     });
   }
 
