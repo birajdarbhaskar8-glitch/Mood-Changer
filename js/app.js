@@ -306,26 +306,6 @@
   }
 
   /* ------------------------------------------------------------ */
-  /* BROWSER HISTORY — category/playlist navigation               */
-  /* ------------------------------------------------------------ */
-  let handlingBrowserBack = false;
-
-  function pushCategoryHistory(categoryId) {
-    if (handlingBrowserBack) return;
-
-    history.pushState(
-      { view: "category", categoryId: categoryId },
-      "",
-      "#category=" + encodeURIComponent(categoryId)
-    );
-  }
-
-  function goHomeFromHistory() {
-    showView("home");
-    setBackground(SETTINGS.homeBackground, SETTINGS.homeBackgroundFallback);
-  }
-
-  /* ------------------------------------------------------------ */
   /* 8. MOOD DIAL (signature element)                               */
   /* ------------------------------------------------------------ */
   function buildMoodDial() {
@@ -524,13 +504,9 @@
   /* ------------------------------------------------------------ */
   /* 11. CATEGORY DETAIL VIEW                                       */
   /* ------------------------------------------------------------ */
-  async function openCategory(categoryId, fromHistory = false) {
+  async function openCategory(categoryId) {
     const cat = findCategory(categoryId);
     if (!cat) return;
-
-    if (!fromHistory) {
-      pushCategoryHistory(categoryId);
-    }
 
     el.categoryHeroIcon.textContent = cat.icon;
     el.categoryHeroName.textContent = cat.name;
@@ -551,7 +527,7 @@
       el.categoryPlayAll.hidden = true;
       showView("category");
 
-      const cacheKey = `yt_cache_v2_${pId}`;
+      const cacheKey = `yt_cache_v3_${pId}`;
       try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -631,9 +607,13 @@
       });
       if (pageToken) params.set("pageToken", pageToken);
 
-      const res = await fetch(
-  `https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist?playlistId=${encodeURIComponent(playlistId)}`
+      const apiUrl = new URL(
+  "https://moodchangerapi.birajdarbhaskar8.workers.dev/playlist"
 );
+apiUrl.searchParams.set("playlistId", playlistId);
+if (pageToken) apiUrl.searchParams.set("pageToken", pageToken);
+
+const res = await fetch(apiUrl.toString());
       const data = await res.json();
 
       if (!res.ok || data.error) {
@@ -714,25 +694,8 @@
   }
 
   el.categoryBackBtn.addEventListener("click", () => {
-    if (history.state?.view === "category") {
-      history.back();
-    } else {
-      goHomeFromHistory();
-    }
-  });
-
-  window.addEventListener("popstate", (event) => {
-    handlingBrowserBack = true;
-
-    if (event.state?.view === "category" && event.state.categoryId) {
-      openCategory(event.state.categoryId, true);
-    } else {
-      goHomeFromHistory();
-    }
-
-    setTimeout(() => {
-      handlingBrowserBack = false;
-    }, 0);
+    showView("home");
+    setBackground(SETTINGS.homeBackground, SETTINGS.homeBackgroundFallback);
   });
 
   /* ------------------------------------------------------------ */
@@ -1290,16 +1253,6 @@
   /* ------------------------------------------------------------ */
   /* 17. INIT                                                       */
   /* ------------------------------------------------------------ */
-
-  // Keep Home as the starting browser-history state.
-  if (!history.state || !history.state.view) {
-    history.replaceState(
-      { view: "home" },
-      "",
-      window.location.href.split("#")[0]
-    );
-  }
-
   if (CATEGORIES[0]) setDialCenter(CATEGORIES[0]);
 })();
 // Fix: Close Mobile Drawer
